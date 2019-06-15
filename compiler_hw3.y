@@ -2,6 +2,7 @@
 %{
 #include "compiler.h" 
 #include "stdio.h"
+#include "stdlib.h"
 #include "string.h"
 
 typedef struct Entry Entry;
@@ -36,6 +37,7 @@ int depth = 0;
 int entry_num[100] = {0};
 int dump_flag = 0;
 char code[256];
+int err_flag = 0;
 
 FILE *file; // To generate .j file for Jasmin
 
@@ -49,7 +51,7 @@ void dump_symbol();
 void free_symbol_table();
 
 /* code generation functions, just an example! */
-void gencode_function();
+void code_gen(char const *s);
 
 %}
 
@@ -99,11 +101,35 @@ stat
 declaration
     : type ID ASGN expression SEMICOLON {
             insert_symbol(cur_header, $2.id_name, $1, "variable", "");
-            do_declaration($1,$2.id_name,$4);
+            if(!error_flag[1]) {
+                Value val;
+                if(strcmp($1,"int") == 0) {
+                    if((!$4.i_val) && ($4.f_val)) {
+                        val.i_val = (int)$4.f_val;
+                        code_gen("\tf2i\n");
+                    }
+                    else{
+                        val.i_val = $4.i_val;
+                    }
+                    if(depth == 1) {
+                        sprintf(code, ".field public static %s I = %d\n", $2.id_name, val.i_val);
+                    }
+                    else {
+                        sprintf(code, "\tistore %d\n",entry_num[depth]);
+                    }
+                    code_gen(code);
+                }
+
+                //****** add type to struct
+
+
+                else if(strcmp($1,"float") == 0) {
+
+                }
+            }
         }
     | type ID SEMICOLON {
             insert_symbol(cur_header, $2.id_name, $1, "variable", "");
-            do_declaration($1,$2.id_name,0);
         }
 ;
 type
@@ -130,7 +156,6 @@ while_stat
 ;
 expression_stat
     : expression SEMICOLON
-    | func SEMICOLON
     | ID{ 
         Header *cur = cur_header;
         int f = 0;
@@ -336,11 +361,15 @@ int main(int argc, char** argv)
 
     fclose(file);
 
+    if(err_flag){
+		remove("compiler_hw3.j");
+	}
     return 0;
 }
 
 void yyerror(char *s)
 {
+    err_flag = 1;
     if((strcmp(s, "syntax error") == 0) && error_flag[0] == 0) {
         error_flag[0] = 1;
     } 
@@ -453,23 +482,8 @@ void dump_symbol() {
 }
 
 /* code generation functions */
-void gencode_function() {}
-void do_declaration(char *type, char *id_name, int value_flag)
+void code_gen(char const *s)
 {
-    char t;
-    int value;
-    if(value_flag) value = 
-    else value = 0;
-
-    switch(type) {
-        case "INT":
-            t = 'I';
-            if(value_flag){
-                sprintf(code, ".field public static %s %c = %d\n", id_name, t, yylval.i_val)
-            }
-        case "FLOAT":
-        case "BOOL":
-        case "STRING":
-        case "VOID":
-    }
+    if (!err_flag)
+        fprintf(file, "%s", s);
 }
