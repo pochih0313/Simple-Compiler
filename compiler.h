@@ -9,6 +9,7 @@ struct Value {
     char *string;
     char *id_name;
     char *val_type;
+    char *compute_type;
 };
 
 #endif
