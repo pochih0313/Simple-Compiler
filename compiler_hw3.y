@@ -38,6 +38,7 @@ int entry_num[100] = {0};
 int dump_flag = 0;
 char code[256];
 int err_flag = 0;
+int variable_num = 0;
 
 FILE *file; // To generate .j file for Jasmin
 
@@ -52,12 +53,13 @@ void free_symbol_table();
 
 /* code generation functions, just an example! */
 void code_gen(char const *s);
+void do_declaration(char *type, char *id_name, Value val);
 
 %}
 
 %union {
     struct Value value;
-    char* type;
+    char *type;
 }
 
 /* Token without return */
@@ -102,34 +104,47 @@ declaration
     : type ID ASGN expression SEMICOLON {
             insert_symbol(cur_header, $2.id_name, $1, "variable", "");
             if(!error_flag[1]) {
-                Value val;
-                if(strcmp($1,"int") == 0) {
-                    if((!$4.i_val) && ($4.f_val)) {
-                        val.i_val = (int)$4.f_val;
-                        code_gen("\tf2i\n");
-                    }
-                    else{
-                        val.i_val = $4.i_val;
-                    }
-                    if(depth == 1) {
-                        sprintf(code, ".field public static %s I = %d\n", $2.id_name, val.i_val);
-                    }
-                    else {
-                        sprintf(code, "\tistore %d\n",entry_num[depth]);
-                    }
-                    code_gen(code);
-                }
-
-                //****** add type to struct
-
-
-                else if(strcmp($1,"float") == 0) {
-
-                }
+                do_declaration($1,$2.id_name,$4);
             }
         }
     | type ID SEMICOLON {
             insert_symbol(cur_header, $2.id_name, $1, "variable", "");
+            if(!error_flag[1]) {
+                if(strcmp($1,"int") == 0) {      
+                    if(depth == 1) {
+                        sprintf(code, ".field public static %s I = 0\n", $2.id_name);
+                    }
+                    else {
+                        sprintf(code, "\tldc 0\n\tistore %d\n",variable_num-1);
+                    }
+                    code_gen(code);
+                }
+                else if(strcmp($1,"float") == 0) {
+                    if(depth == 1) {
+                        sprintf(code, ".field public static %s F = 0.0\n", $2.id_name);
+                    }
+                    else {
+                        sprintf(code, "\tldc 0.0\n\tfstore %d\n",variable_num-1);
+                    }
+                    code_gen(code);
+                }
+                else if(strcmp($1,"bool") == 0) {
+                    if(depth == 1) {
+                        sprintf(code, ".field public static %s Z = 0\n", $2.id_name);
+                    }
+                    else {
+                        sprintf(code, "\tldc 0\n\tistore %d\n",variable_num-1);
+                    }
+                    code_gen(code);
+                }
+                else if(strcmp($1,"string") == 0) {
+                    if(depth != 1) {
+                        sprintf(code, "\tldc \"\"\n\tastore %d\n",variable_num-1);
+                    }
+                    code_gen(code);
+                }
+                else yyerror("Unsupported type");
+            }
         }
 ;
 type
@@ -414,6 +429,8 @@ void insert_symbol(Header *header, char* id_name, char* type, char* kind, char* 
         temp->scope = header->depth;
         temp->attribute = "";
         if(header->previous != NULL){
+            if(strcmp(kind, "variable") == 0)
+                variable_num++;
             if(header->previous->tail->attribute == "")
                 header->previous->tail->attribute = attribute;
             else {
@@ -422,8 +439,6 @@ void insert_symbol(Header *header, char* id_name, char* type, char* kind, char* 
                 sprintf(temp,"%s, %s", header->previous->tail->attribute, attribute);
                 header->previous->tail->attribute = temp;
             }
-                
-            
         }
         temp->next = NULL;
         header->tail->next = temp;
@@ -463,6 +478,8 @@ void dump_symbol() {
            "Index", "Name", "Kind", "Type", "Scope", "Attribute");
         Entry *cur = cur_header->root->next;
         while(cur != NULL) {
+            if(strcmp(cur->kind, "variable") == 0)
+                variable_num--;
             if(cur->attribute != "") {
                 printf("%-10d%-10s%-12s%-10s%-10d%s\n", cur->index, cur->name, cur->kind, cur->type, cur->scope, cur->attribute);
             }
@@ -486,4 +503,53 @@ void code_gen(char const *s)
 {
     if (!err_flag)
         fprintf(file, "%s", s);
+}
+
+void do_declaration(char *type, char *id_name, Value val)
+{
+    int flag = 0;
+    if(strcmp(type,"int") == 0) {      
+        if(strcmp(val.val_type, "FLOAT_T") == 0) {
+            val.i_val = (int)val.f_val;
+            flag = 1;                    
+        }
+        if(depth == 1) {
+            sprintf(code, ".field public static %s I = %d\n", id_name, val.i_val);
+        }
+        else {
+            if(flag == 1) code_gen("\tf2i\n");
+            sprintf(code, "\tistore %d\n",variable_num-1);
+        }
+        code_gen(code);
+    }
+    else if(strcmp(type,"float") == 0) {
+        if(strcmp(val.val_type, "INT_T") == 0) {
+            val.f_val = (float)val.i_val;
+            flag = 1;                      
+        }
+        if(depth == 1) {
+            sprintf(code, ".field public static %s F = %f\n", id_name, val.f_val);
+        }
+        else {
+            if(flag == 1) code_gen("\ti2f\n");
+            sprintf(code, "\tfstore %d\n",variable_num-1);
+        }
+        code_gen(code);
+    }
+    else if(strcmp(type,"bool") == 0) {
+        if(depth == 1) {
+            sprintf(code, ".field public static %s Z = %d\n", id_name, val.b_val);
+        }
+        else {
+            sprintf(code, "\tistore %d\n",variable_num-1);
+        }
+        code_gen(code);
+    }
+    else if(strcmp(type,"string") == 0) {
+        if(depth != 1) {
+            sprintf(code, "\tastore %d\n",variable_num-1);
+        }
+        code_gen(code);
+    }
+    else yyerror("Unsupported type");
 }

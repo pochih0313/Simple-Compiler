@@ -100,10 +100,14 @@ id			{letter}+({letter}|{digit})*
             }
 
  /* boolean Keywords */
-"true"      { CONCAT; yylval.value.b_val = 1;
+"true"      { CONCAT;
+                yylval.value.val_type = "BOOL_T";
+                yylval.value.b_val = 1;
                 return TRUE;
             }
-"false"     { CONCAT; yylval.value.b_val = 0;
+"false"     { CONCAT;
+                yylval.value.val_type = "BOOL_T";
+                yylval.value.b_val = 0;
                 return FALSE;
             }
 
@@ -116,15 +120,21 @@ id			{letter}+({letter}|{digit})*
 <STRING_STATE>\"		{ CONCAT; BEGIN INITIAL; 
                             return QUOTA;
                         }
-<STRING_STATE>[^"]*		{ CONCAT; yylval.value.string = strdup(yytext);
+<STRING_STATE>[^"]*		{ CONCAT;
+                            yylval.value.val_type = "STR_T";
+                            yylval.value.string = strdup(yytext);
                             return STR_CONST;
                         }
 
  /* Number Constant */
-{integer}	{ CONCAT; yylval.value.i_val = atoi(yytext);
+{integer}	{ CONCAT;
+                yylval.value.val_type = "INT_T";
+                yylval.value.i_val = atoi(yytext);
                 return I_CONST;
             }
-{float}	    { CONCAT; yylval.value.f_val = atof(yytext);
+{float}	    { CONCAT;
+                yylval.value.val_type = "FLOAT_T";
+                yylval.value.f_val = atof(yytext);
                 return F_CONST;
             }
 
@@ -151,7 +161,9 @@ id			{letter}+({letter}|{digit})*
 \/\/.*	{ CONCAT; comment_num++; }
 
  /* Variable ID */
- {id}       { CONCAT; yylval.value.id_name = strdup(yytext);
+ {id}       { CONCAT;
+                yylval.value.val_type = "ID_T";
+                yylval.value.id_name = strdup(yytext);
                 return ID;
             }
 

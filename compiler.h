@@ -8,6 +8,7 @@ struct Value {
     int b_val;
     char *string;
     char *id_name;
+    char *val_type;
 };
 
 #endif
