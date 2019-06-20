@@ -3,13 +3,14 @@ int foo(int a) {
    return a;
 }
 
-void lol(int a) {
-    print(a);
+void lol(int b) {
+    print(b);
 	return;
 }
 
 void main(){
    int a;
+   int b;
    a = foo(4);
    lol(a);
    return;

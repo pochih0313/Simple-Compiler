@@ -556,6 +556,13 @@ func_definition
 
             code_gen(".limit stack 50\n");
             code_gen(".limit locals 50\n");
+
+            struct Entry* node_ptr = cur_header->root->next;
+            while(node_ptr != NULL){
+                if(strcmp(node_ptr->kind,"variable") == 0 || strcmp(node_ptr->kind,"parameter") == 0)
+                    load_variable(node_ptr);
+                node_ptr = node_ptr->next;
+            }
         } func_block { code_gen(".end method\n"); }
 ;
 type_arguments
@@ -874,7 +881,7 @@ void dump_symbol() {
            "Index", "Name", "Kind", "Type", "Scope", "Attribute");
         Entry *cur = cur_header->root->next;
         while(cur != NULL) {
-            if(strcmp(cur->kind, "variable") == 0)
+            if(strcmp(cur->kind, "variable") == 0 || strcmp(cur->kind, "parameter") == 0)
                 variable_num--;
             if(cur->attribute != "") {
                 printf("%-10d%-10s%-12s%-10s%-10d%s\n", cur->index, cur->name, cur->kind, cur->type, cur->scope, cur->attribute);
