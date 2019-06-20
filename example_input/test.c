@@ -1,15 +1,25 @@
+int foo (int a, int b)
+{
+    return a+b;
+}
+
 void main()
 {
-    int a = 5.3;
-    a++;
-    float b = 3;
-    b--;
-    bool i = a < b;
-    b = a + 2;
-    string k;
-    int c;
-    float d;
-    bool e;
+    // int a = 3;
+     float b = 14.3;
+     int c;
+    // float d;
+
+    // print(c);
+
+    // string s = "hello";
+    // print(a);
+    // print(7);
+    // print(s);
+    // print("hihi");
+
+    int k = foo(5,6.9,3);
+    print(k);
     return;
 }
 

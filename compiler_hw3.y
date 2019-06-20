@@ -50,6 +50,7 @@ struct Entry *temp_entry = NULL;
 int if_count = 0;
 int else_if_count = 0;
 int while_count = 0;
+int  last_zero = 0;
 
 FILE *file; // To generate .j file for Jasmin
 
@@ -119,6 +120,7 @@ stat
     | expression_stat
     | print_func
     | func_definition
+    | return_stmt
 ;
 declaration
     : type ID ASGN expression SEMICOLON {
@@ -280,31 +282,31 @@ comparison_expr
 addition_expr
     : multiplication_expr { $$ = $1; }
     | addition_expr add_op multiplication_expr {
-        if (depth > 1)
+        
+        if (depth > 1) {
             $$ = doAddition($1.compute_type, $3.compute_type, $2);
+        }
+            
     }
 ;
 multiplication_expr
     : postfix_expr { $$ = $1; }
     | multiplication_expr mul_op postfix_expr {
-        if(strcmp($2, "DIV_T") == 0 && ($3.i_val == 0 || $3.f_val == 0)) {
-            yyerror("Can't be divided by zero");
-        }
-        else {
-            if (depth > 1)
-                $$ = doMultiplication($1.compute_type, $3.compute_type, $2);
-        }
+        if (depth > 1)
+            $$ = doMultiplication($1.compute_type, $3.compute_type, $2);
     }
 ;
 postfix_expr
     : parenthesis { $$ = $1; }
     | parenthesis post_op { 
             $$ = $1;
-            if(strcmp($1.val_type, "ID_T") == 0) {
-                if (depth > 1)
-                    doPostfix(postfix_entry, $2);
+            if($1.val_type) {
+                if(strcmp($1.val_type, "ID_T") == 0) {
+                    if (depth > 1)
+                        doPostfix(postfix_entry, $2);
+                }
+                else yyerror("Wrong value type for postfix expression");
             }
-            else yyerror("Wrong value type for postfix expression");
         }
 ;
 parenthesis
@@ -338,10 +340,11 @@ parenthesis
                 sprintf(msg[error_num++], "Undeclared variable <%s>", $1.id_name);
                 error_flag[1] = 1;
             }
+            last_zero = 0;
             $$ = $1;
         }
     | LB expression RB { $$ = $2; }
-    | func { $$ = $1; }
+    | func { last_zero = 0; $$ = $1; }
 ;
 cmp_op
     : MT { $$ = "MT_T"; }
@@ -380,12 +383,44 @@ constant
                 sprintf(code, "\tldc %d\n", $1.i_val);
                 code_gen(code);
             }
+
+            if($1.i_val == 0) {
+                last_zero = 1;
+            }
+            else {
+                last_zero = 0;
+            }
         }
     | F_CONST {
             $1.compute_type = "float";
             $$ = $1;
             if(depth > 1) {
                 sprintf(code, "\tldc %f\n", $1.f_val);
+                code_gen(code);
+            }
+
+            if($1.f_val == 0) {
+                last_zero = 1;
+            }
+            else {
+                last_zero = 0;
+            }
+        }
+    | SUB I_CONST {
+            $2.compute_type = "int";
+            $2.i_val *= -1;
+            $$ = $2;
+            if(depth > 1) {
+                sprintf(code, "\tldc %d\n", $2.i_val);
+                code_gen(code);
+            }
+        }
+    | SUB F_CONST {
+            $2.compute_type = "float";
+            $2.f_val *= -1;
+            $$ = $2;
+            if(depth > 1) {
+                sprintf(code, "\tldc %f\n", $2.f_val);
                 code_gen(code);
             }
         }
@@ -533,41 +568,40 @@ arg
 ;
 func_block
     : LCB program RCB { dump_flag = 1; }
-    | LCB program RET SEMICOLON RCB { 
+;
+return_stmt
+    : RET SEMICOLON { 
             if(strcmp(return_type, "void") == 0)
                 code_gen("\treturn\n");
             else
                 yyerror("Wrong return type");
-            dump_flag = 1;
         }
-    | LCB program RET expression SEMICOLON RCB {
-            if(strcmp(return_type, "int") == 0 && strcmp($4.compute_type, "int") == 0) {
+    | RET expression SEMICOLON {
+            if(strcmp(return_type, "int") == 0 && strcmp($2.compute_type, "int") == 0) {
                 code_gen("\tireturn\n");
             }  
-            else if(strcmp(return_type, "int") == 0 && strcmp($4.compute_type, "float") == 0) {
+            else if(strcmp(return_type, "int") == 0 && strcmp($2.compute_type, "float") == 0) {
                 code_gen("\tf2i\n");
                 code_gen("\tireturn\n");
             }
-            else if(strcmp(return_type, "float") == 0 && strcmp($4.compute_type, "float") == 0) {
+            else if(strcmp(return_type, "float") == 0 && strcmp($2.compute_type, "float") == 0) {
                 code_gen("\tfreturn\n");
             }  
-            else if(strcmp(return_type, "float") == 0 && strcmp($4.compute_type, "int") == 0) {
+            else if(strcmp(return_type, "float") == 0 && strcmp($2.compute_type, "int") == 0) {
                 code_gen("\ti2f\n");
                 code_gen("\tfreturn\n");
             }
-            else if(strcmp(return_type, "bool") == 0 && strcmp($4.compute_type, "bool") == 0) {
+            else if(strcmp(return_type, "bool") == 0 && strcmp($2.compute_type, "bool") == 0) {
                 code_gen("\tireturn\n");
             }
-            else if(strcmp(return_type, "string") == 0 && strcmp($4.compute_type, "string") == 0) {
+            else if(strcmp(return_type, "string") == 0 && strcmp($2.compute_type, "string") == 0) {
                 code_gen("\tareturn\n");
             }
             else yyerror("Wrong return type");
-                
-            dump_flag = 1;
         }
 ;
 func
-    : ID{
+    : ID {
         Header *cur = cur_header;
         int f = 0;
         while (cur != NULL) {
@@ -578,8 +612,9 @@ func
                 Entry *tmp = cur->root->next;
                 while (tmp != NULL) {
                     if (tmp->index == lookup_symbol(cur, $1.id_name)) {
+                        
                         $1.compute_type = tmp->type;
-
+                        
                         // Get all attributes in function from table
                         if(strcmp(tmp->attribute,"") != 0) {
                             char* temp;
@@ -607,10 +642,12 @@ func
             }
             cur = cur->previous;
         }
+
         if (f != 1) {
             sprintf(msg[error_num++], "Undeclared function %s", $1.id_name);
             error_flag[1] = 1;
         }
+        
     } LB arguments RB {
         $$ = $1;
         if(temp_entry) {
@@ -653,49 +690,58 @@ func
 ;
 arguments
     : arguments COMMA expression {
-        if(strcmp($3.val_type, "ID_T") == 0) {
-            Header *cur = cur_header;
-            int f = 0;
-            while (cur != NULL) {
-                if(lookup_symbol(cur, $3.id_name) != -1) {
-                    f = 1;
-                    break;
+        if(error_flag[1] != 1) {
+            if($3.val_type) {
+                if(strcmp($3.val_type, "ID_T") == 0) {
+                    Header *cur = cur_header;
+                    int f = 0;
+                    while (cur != NULL) {
+                        if(lookup_symbol(cur, $3.id_name) != -1) {
+                            f = 1;
+                            break;
+                        }
+                        cur = cur->previous;
+                    }
+                    if (f != 1) {
+                        sprintf(msg[error_num++], "Undeclared variable %s", $3.id_name);
+                        error_flag[1] = 1;
+                    }
                 }
-                cur = cur->previous;
             }
-            if (f != 1) {
-                sprintf(msg[error_num++], "Undeclared variable %s", $3.id_name);
-                error_flag[1] = 1;
-            }
-        }
+            
 
-        if(strcmp($3.compute_type, temp_list[param_num]) != 0) {
-            yyerror("Wrong parameter type");
+            if(strcmp($3.compute_type, temp_list[param_num]) != 0) {
+                if(param_num == temp_n) yyerror("Numbers of Parameter is not the same"); 
+                else yyerror("Wrong parameter type");
+            }
+            param_num++;
         }
-        param_num++;
-        if(param_num > temp_n) yyerror("Numbers of Parameter is not the same"); 
     }
     | expression {
-        if(strcmp($1.val_type, "ID_T") == 0) {
-            Header *cur = cur_header;
-            int f = 0;
-            while (cur != NULL) {
-                if(lookup_symbol(cur, $1.id_name) != -1) {
-                    f = 1;
-                    break;
+        if(error_flag[1] != 1) {
+            if($1.val_type) {
+                if(strcmp($1.val_type, "ID_T") == 0) {
+                    Header *cur = cur_header;
+                    int f = 0;
+                    while (cur != NULL) {
+                        if(lookup_symbol(cur, $1.id_name) != -1) {
+                            f = 1;
+                            break;
+                        }
+                        cur = cur->previous;
+                    }
+                    if (f != 1) {
+                        sprintf(msg[error_num++], "Undeclared variable %s", $1.id_name);
+                        error_flag[1] = 1;
+                    }
                 }
-                cur = cur->previous;
             }
-            if (f != 1) {
-                sprintf(msg[error_num++], "Undeclared variable %s", $1.id_name);
-                error_flag[1] = 1;
+            
+            if(strcmp($1.compute_type, temp_list[param_num]) != 0) {
+                yyerror("Wrong parameter type");
             }
+            param_num++;
         }
-
-        if(strcmp($1.compute_type, temp_list[param_num]) != 0) {
-            yyerror("Wrong parameter type");
-        }
-        param_num++;
     }
     | { if(strcmp(temp_entry->attribute, "") != 0) yyerror("Prameter should be empty"); }
 ;
@@ -779,6 +825,7 @@ void insert_symbol(Header *header, char* id_name, char* type, char* kind, char* 
                 temp->var_index = variable_num++;
             }
             else if(strcmp(kind, "parameter") == 0) {
+                temp->var_index = variable_num++;
                 if(header->previous->tail->attribute == "")
                 header->previous->tail->attribute = attribute;
                 else {
@@ -1068,6 +1115,9 @@ struct Value doMultiplication(char *left_type, char *right_type, char *op_type)
         else yyerror("Wrong type for multiplication");
     }
     else if(strcmp(op_type, "DIV_T") == 0) {
+        if(last_zero) {
+            yyerror("Divided by zero");
+        }
         if(strcmp(left_type, "int") == 0 && strcmp(right_type, "int") == 0) {
             code_gen("\tidiv\n");
             val.compute_type = "int";
@@ -1095,7 +1145,9 @@ struct Value doMultiplication(char *left_type, char *right_type, char *op_type)
             code_gen("\tirem\n");
             val.compute_type = "int";
         }
-        else yyerror("Only int can be used in mod operation");
+        else {
+            yyerror("Only int can be used in mod operation");
+        }
     }
 
     return val;
